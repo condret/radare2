@@ -62,7 +62,7 @@ R_API RIOPlugin *r_io_plugin_resolve(RIO *io, const char *filename, ut8 many) {
 		if (ret->plugin_open (io, filename, many))
 			return ret;
 	}
-	return NULL;
+	return r_io_plugin_get_default (io, filename, many);
 }
 
 R_API int r_io_plugin_open(RIO *io, int fd, RIOPlugin *plugin) {
@@ -83,7 +83,7 @@ R_API int r_io_plugin_list(RIO *io) {
 	} else	return 0;
 	if (!io->plugins)
 		return 0;
-	ls_foreach (io->plugins, iter, plugin)
+	ls_foreach (io->plugins, iter, plugin) {
 		if (plugin) {
 			if (plugin->name)
 				io->cb_printf (" - %s\n", plugin->name);
