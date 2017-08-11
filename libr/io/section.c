@@ -565,18 +565,24 @@ R_API bool r_io_section_apply(RIO *io, ut32 id, RIOSectionApplyMethod method) {
 static bool _section_reapply_anal_or_patch(RIO *io, RIOSection *sec, RIOSectionApplyMethod method) {
 	SdbListIter *iter;
 	RIOMap *map;
+	RIODesc* desc;
+		return false;
 	if (!sec) {
 		return false;
 	}
 	if (sec->memmap) {
 		ls_foreach (io->maps, iter, map) {
 			if (map->id == sec->memmap) {
-				r_io_close (io, map->fd);
+				desc = r_io_desc_get (io, map->fd);
+				if (desc && desc->plugin && desc->plugin->close) {	//we can't use r_io_close here, bc it breaks the section-list
+					desc->plugin->close (desc);
+					r_io_desc_del (io, map->fd);
+				}
+				sec->memmap = 0;
+				r_io_map_cleanup (io);
 				break;
 			}
 		}
-		r_io_map_del (io, sec->memmap);
-		sec->memmap = 0;
 	}
 	r_io_map_del (io, sec->filemap);
 	sec->filemap = 0;
@@ -725,12 +731,12 @@ R_API bool r_io_section_reapply(RIO *io, ut32 id, RIOSectionApplyMethod method) 
 
 R_API bool r_io_section_reapply_bin(RIO *io, ut32 binid, RIOSectionApplyMethod method) {
 	RIOSection *sec;
-	SdbListIter *iter;
+	SdbListIter *iter, *ator;
 	bool ret = false;
 	if (!io || !io->sections) {
 		return false;
 	}
-	ls_foreach (io->sections, iter, sec) {
+	ls_foreach_safe (io->sections, iter, ator, sec) {
 		if (sec && (sec->bin_id == binid)) {
 			ret = true;
 			_section_reapply (io, sec, method);
