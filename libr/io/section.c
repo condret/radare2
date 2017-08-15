@@ -566,7 +566,6 @@ static bool _section_reapply_anal_or_patch(RIO *io, RIOSection *sec, RIOSectionA
 	SdbListIter *iter;
 	RIOMap *map;
 	RIODesc* desc;
-		return false;
 	if (!sec) {
 		return false;
 	}
