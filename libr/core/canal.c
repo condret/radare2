@@ -516,14 +516,17 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 		RAnalRef *ref;
 		int delta = r_anal_fcn_size (fcn);
 		// XXX hack slow check io error
-		if (!r_io_read_at (core->io, at + delta, buf, buflen)) {
-			eprintf ("read errro\n");
+		if (r_io_read_at (core->io, at + delta, buf, 4) != 4) {
+			eprintf ("read error\n");
 			goto error;
 		}
 		// real read.
 		// this is unnecessary if its contiguous
-		buflen = r_io_read_at (core->io, at+delta, buf, core->anal->opt.bb_max_size) ? 
-			core->anal->opt.bb_max_size : 0;
+		buflen = r_io_read_at (core->io, at+delta, buf, core->anal->opt.bb_max_size);
+		if (buflen < 0) {
+			eprintf ("read error\n");
+			goto error;
+		}
 		if (core->io->va) {
 			if (!r_io_is_valid_section_offset (core->io, at+delta, !core->anal->opt.noncode)) {
 				goto error;
