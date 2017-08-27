@@ -7,6 +7,7 @@
 #include <r_list.h>
 #include <r_socket.h>
 #include <r_util.h>
+#include <r_rbtree.h>
 #include <r_vector.h>
 
 #define R_IO_READ	4
@@ -163,6 +164,11 @@ typedef struct r_io_map_skyline_t {
 	ut64 from;
 	ut64 to;
 } RIOMapSkyline;
+
+typedef struct r_io_shadow_t {
+	RQueue *changes;
+	RBTree *sh_maps;
+} RIOShadow;
 
 typedef struct r_io_section_t {
 	char *name;
