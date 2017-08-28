@@ -21,7 +21,7 @@ static ut32 get_msb(ut32 v) {
 	return 0;
 }
 
-static int __cmpnhacknslash_insert (RQueue *todo, RIOMap *in, RIOMap *incoming) {
+static int _cmpnhacknslash_insert (RQueue *todo, RIOMap *in, RIOMap *incoming) {
 	RIOMap *dup;
 	//cmp
 	//       ######
@@ -74,14 +74,22 @@ static int __cmpnhacknslash_insert (RQueue *todo, RIOMap *in, RIOMap *incoming) 
 	return -1;
 }
 
-
+int _cmp_find (void *user, RIOMap *map, ut64 off) {
+	if (off < map->from) {
+		return -1;
+	}
+	if (off > map->to) {
+		return 1;
+	}
+	return 0;
+}
 
 R_API *RIOShadow r_io_shadow_new () {
 	RIOShadow *shadow = R_NEW0 (RIOShadow);
-	if (!shadow) {
+	if (!shadow || !(shadow->seek = R_NEW0 (RBTreeIter))) {
 		return NULL;
 	}
-	shadow->sh_maps = r_rbtree_new (free, __cmpnhacknslash_insert);
+	shadow->sh_maps = r_rbtree_new (free, (RBTreeComparator)_cmpnhacknslash_insert);
 }
 
 R_API void r_io_shadow_init (RIO *io) {
@@ -104,7 +112,7 @@ R_API bool r_io_shadow_build (RIO *io) {
 	if (!(todo = r_queue_new (get_msb (io->maps->length)))) {
 		return false;
 	}
-	io->shadows->cmp = __cmpnhacknslash_insert;
+	io->shadows->cmp = (RBTreeComparator)_cmpnhacknslash_insert;
 	ls_foreach_prev (io->maps, iter, map) {
 		if (!(pam = __map_dup(map))) {
 				r_queue_free (todo);
@@ -118,6 +126,60 @@ R_API bool r_io_shadow_build (RIO *io) {
 	}
 	return true;
 }
+
+//say no to ut64_max for errors
+R_API ut64 r_io_shadow_seek (RIO *io, ut64 offset, int whence, bool *success) {
+	RIOMap *map;
+	if (!io || !io->shadows) {
+		if (success) {
+			*success = false;
+		}
+		return 0LL;
+	}
+	io->shadows->sh_maps->cmp = (RBTreeComparator)_cmp_find;
+	if (success) {
+		*success = true;
+	}
+	if (whence == R_IO_SEEK_CUR) {
+		if (offset == 0LL) {	//this might be a bad assumption
+			return io->off;
+		}
+		io->off += offset;
+	}
+	switch (whence) {
+		case R_IO_SEEK_SET:
+			io->off = offset;
+		case R_IO_SEEK_CUR:
+			io->shadows.seek = r_rbtree_lower_bound_forward (
+					io->shadows->sh_maps, io->off, NULL);
+			break;
+		case R_IO_SEEK_END:
+			io->shadows.seek = r_rbtree_last (io->shadows->sh_maps);
+			map = (RIOMap *)io->shadows.seek.path[io->shadows.seek.len-1]->data;
+			io->off = map->to;
+			//we want that, bc the read does not need
+			//to check if forwards or backwards
+			io->shadows.seek = r_rbtree_lower_bound_forward
+					(io->shadows->sh_maps, io->off, NULL);
+			break;
+	}
+	return io->off;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

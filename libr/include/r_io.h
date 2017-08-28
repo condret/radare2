@@ -169,6 +169,7 @@ typedef struct r_io_map_skyline_t {
 typedef struct r_io_shadow_t {
 	RQueue *changes;
 	RBTree *sh_maps;
+	RBTreeIter seek;
 } RIOShadow;
 
 typedef struct r_io_section_t {
