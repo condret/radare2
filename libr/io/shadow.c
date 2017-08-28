@@ -74,12 +74,14 @@ static int __cmpnhacknslash_insert (RQueue *todo, RIOMap *in, RIOMap *incoming) 
 	return -1;
 }
 
+
+
 R_API *RIOShadow r_io_shadow_new () {
 	RIOShadow *shadow = R_NEW0 (RIOShadow);
 	if (!shadow) {
 		return NULL;
 	}
-	shadow->sh_maps = r_rbtree_new (free, cmpnhacknslash);
+	shadow->sh_maps = r_rbtree_new (free, __cmpnhacknslash_insert);
 }
 
 R_API void r_io_shadow_init (RIO *io) {
@@ -102,8 +104,8 @@ R_API bool r_io_shadow_build (RIO *io) {
 	if (!(todo = r_queue_new (get_msb (io->maps->length)))) {
 		return false;
 	}
-	io->shadows->cmp = cmpnhacknslash;
-	ls_foreachi_prev (io->maps, iter, map) {
+	io->shadows->cmp = __cmpnhacknslash_insert;
+	ls_foreach_prev (io->maps, iter, map) {
 		if (!(pam = __map_dup(map))) {
 				r_queue_free (todo);
 				return false;

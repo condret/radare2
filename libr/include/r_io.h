@@ -73,6 +73,7 @@ typedef struct r_io_t {
 	RIDPool *map_ids;
 	SdbList *maps; //from tail backwards maps with higher priority are found
 	RVector map_skyline; // map parts that are not covered by others
+	RIOShadow *shadows;
 	SdbList *sections;
 	RIDStorage *files;
 	RCache *buffer;
