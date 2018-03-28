@@ -72,6 +72,10 @@ typedef struct r_io_t {
 	bool cachemode; // write in cache all the read operations (EXPERIMENTAL)
 	int p_cache;
 	int buffer_enabled;
+	ut32 block_cache_size;	//size of each block_cache element
+	ut32 block_cache_num;	//maximal number of  block_cache_elements per RIODesc
+	RIDPool *block_cache_ids;	//secret token for storing block_caches
+	Sdb *block_cache_storage;	//stores all block_caches
 	int debug;
 //#warning remove debug from RIO
 	RIDPool *sec_ids;
@@ -103,6 +107,8 @@ typedef struct r_io_desc_t {
 	char *uri;
 	char *name;
 	char *referer;
+	ut32 block_cache_id;
+	ut32 top_block;	//block_cache_index of the most recent block
 	Sdb *cache;
 	void *data;
 	struct r_io_plugin_t *plugin;
@@ -144,6 +150,7 @@ typedef struct r_io_plugin_t {
 	int (*init)(void);
 	RIOUndo undo;
 	bool isdbg;
+	bool use_block_cache;
 	// int (*is_file_opened)(RIO *io, RIODesc *fd, const char *);
 	char *(*system)(RIO *io, RIODesc *fd, const char *);
 	RIODesc* (*open)(RIO *io, const char *, int rw, int mode);
@@ -211,6 +218,12 @@ typedef struct r_io_desc_cache_t {
 	ut64 cached;
 	ut8 cdata[R_IO_DESC_CACHE_SIZE];
 } RIODescCache;
+
+typedef struct r_io_block_cache_t {
+	ut64 block_cache_index;		//this if this value gets too low in relation to the others the item gets deleted
+	ut64 addr;			//start offset of the block
+	ut8 *data;
+} RIOBlockCache;
 
 typedef struct r_io_access_log_element_t {
 	ut64 vaddr;
