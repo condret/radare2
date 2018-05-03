@@ -70,6 +70,8 @@ typedef struct r_io_t {
 	int autofd;
 	int cached;
 	bool cachemode; // write in cache all the read operations (EXPERIMENTAL)
+	ut32 block_cache_size;
+	ut32 block_cache_num;	//number of bcache-elements per cachable 
 	int p_cache;
 	int buffer_enabled;
 	int debug;
@@ -104,6 +106,7 @@ typedef struct r_io_desc_t {
 	char *name;
 	char *referer;
 	Sdb *cache;
+	struct r_io_desc_bcache_t *bcache;
 	void *data;
 	struct r_io_plugin_t *plugin;
 	RIO *io;
@@ -211,6 +214,18 @@ typedef struct r_io_desc_cache_t {
 	ut64 cached;
 	ut8 cdata[R_IO_DESC_CACHE_SIZE];
 } RIODescCache;
+
+typedef struct r_io_desc_bcache_element_t {
+	ut32 real_idx;
+	ut64 bce_addr;
+	ut8 *data;
+} RIODescBCacheElement;
+
+typedef struct r_io_desc_bcache_t {
+	SdbMini *bce;
+	ut32 base_idx;
+	RIODescBCacheElement **caches;
+} RIODescBCache;
 
 typedef struct r_io_access_log_element_t {
 	ut64 vaddr;
