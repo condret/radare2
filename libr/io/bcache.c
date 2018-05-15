@@ -18,6 +18,57 @@ static RIODBCE *_riodbce_new(int size) {
 	return ret;
 }
 
+static void _riodbce_free(RIODBCE *bce) {
+	if(bce) {
+		free(bce->data);
+	}
+	free(bce);
+}
+
+// this assumes a sane idx
+static void _riodbc_remove_idx(RIODBC *bcache, ut32 idx) {
+	if(bcache->caches[idx]) {
+		dict_del(bcache->bce, bcache->caches[idx]->bce_addr);
+		_riodbce_free(bcache->caches[idx]);
+		bcache->caches[idx] = NULL;
+	}
+}
+
+static void _riodbc_remove_all(RIODesc *desc) {
+	ut32 i;
+
+	if(desc->bcache) {
+		for(i = 0; i < desc->io->block_cache_num; i++) {
+			_riodbc_remove_idx (desc->bcache, i);
+		}
+		desc->bcache->base_idx = 0;
+	}
+}
+
+static bool desc_set_block_cache_size_cb(void *user, void *data, ut32 id) {
+	RIODesc *desc = (RIODesc *)data;
+
+	if(desc->plugin && desc->plugin->cacheable) {
+		_riodbc_remove_all(desc);
+	}
+	return true;
+}
+
+R_API void r_io_set_block_cache_size(RIO *io, ut32 size) {
+	if(io) {
+		// anything below 8 seems not to be a reasonable size
+		if((size < 9) || (io->block_cache_size == size)) {
+			return;
+		}
+		if(io->files) {
+			r_id_storage_foreach(io->files, desc_set_block_cache_size_cb, NULL);
+		}
+		io->block_cache_size = size;
+	}
+}
+
+//static bool desc_set_block_cache_num_cb(void *user, void *data, id) {
+
 //make these less bloating
 static ut32 _dec_ring_idx(ut32 r_idx, ut32 bc_mod) {
 	return (r_idx + (bc_mod - 1)) % bc_mod;
@@ -42,6 +93,7 @@ static RIODBCE *_allocate_or_sacrifice_for_block_at(RIODesc *desc, ut64 addr) {
 			desc->bcache->base_idx = _inc_ring_idx(desc->bcache->base_idx, bc_mod);
 			goto beach;	//because of reasons
 		}
+		desc->bcache->caches[desc->bcache->base_idx] = ret;
 		ret->real_idx = desc->bcache->base_idx;
 	} else {
 		dict_del(desc->bcache->bce, ret->bce_addr);
@@ -119,4 +171,20 @@ static int _read_from_single_block (RIODesc *desc, ut64 addr, ut8 *buf, int len)
 	len -= (block_addr - addr);
 	memcpy (buf, bce->data, len);
 	return len;
+}
+
+int _block_read(RIODesc *desc, ut64 addr, ut8 *buf, int len) {
+	int clen, rlen = 0;
+
+	while(len > 0) {
+		clen = _read_from_single_block(desc, addr, buf, len);
+		if(clen < 0) {
+			return clen;
+		}
+		rlen += clen;
+		buf += clen;
+		addr += clen;
+		len -= clen;
+	}
+	return rlen;
 }
