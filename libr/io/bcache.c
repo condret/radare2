@@ -69,6 +69,18 @@ R_API void r_io_set_block_cache_size(RIO *io, ut32 size) {
 
 //static bool desc_set_block_cache_num_cb(void *user, void *data, id) {
 
+R_API void r_io_set_block_cache_num(RIO *io, ut32 num) {
+	if(io) {
+		if((num < 5) || (io->block_cache_num == num)) {
+			return;
+		}
+		if(io->files) {
+			r_id_storage_foreach(io->files, desc_set_block_cache_num_cb, NULL);
+		}
+		io->block_cache_num = num;
+	}
+}
+
 //make these less bloating
 static ut32 _dec_ring_idx(ut32 r_idx, ut32 bc_mod) {
 	return (r_idx + (bc_mod - 1)) % bc_mod;
