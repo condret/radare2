@@ -67,7 +67,20 @@ R_API void r_io_set_block_cache_size(RIO *io, ut32 size) {
 	}
 }
 
-//static bool desc_set_block_cache_num_cb(void *user, void *data, id) {
+static bool desc_set_block_cache_num_bigger_cb(void *user, void *data, ut32 id) {
+	RIODesc *desc = (RIODesc *)data;
+	ut32 *num = (ut32 *)user;
+	RIODBC **ptr = NULL;
+
+	if(desc->plugin && desc->plugin->cacheable) {
+		ptr = realloc(desc->bcache->caches, sizeof(RIODBC *) * num[0]);
+		if(!ptr) {
+			return false;
+		}
+		desc->bcache->caches = ptr;
+	}
+	return true;
+}
 
 R_API void r_io_set_block_cache_num(RIO *io, ut32 num) {
 	if(io) {
@@ -75,7 +88,7 @@ R_API void r_io_set_block_cache_num(RIO *io, ut32 num) {
 			return;
 		}
 		if(io->files) {
-			r_id_storage_foreach(io->files, desc_set_block_cache_num_cb, NULL);
+			r_id_storage_foreach(io->files, desc_set_block_cache_num_cb, &num);
 		}
 		io->block_cache_num = num;
 	}
@@ -90,7 +103,7 @@ static ut32 _inc_ring_idx(ut32 r_idx, ut32 bc_mod) {
 	return (r_idx + 1) % bc_idx;
 }
 
-/* sacrifices least used block, and assumes the new block will be most used one*/
+/* sacrifies least used block, and assumes the new block will be most used one*/
 static RIODBCE *_allocate_or_sacrifice_for_block_at(RIODesc *desc, ut64 addr) {
 	ut32 bc_mod = desc->io->block_cache_num;
 	RIODBCE *ret;
