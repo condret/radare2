@@ -85,6 +85,11 @@ R_API RAnalEsil *r_anal_esil_new(int stacksize, int iotrap, unsigned int addrsiz
 	if (!esil) {
 		return NULL;
 	}
+	esil->hooks = r_anal_esil_hooks_new ();
+	if (!esil->hooks) {
+		free (esil);
+		return NULL;
+	}
 	if (stacksize < 3) {
 		free (esil);
 		return NULL;
@@ -163,6 +168,7 @@ R_API void r_anal_esil_free(RAnalEsil *esil) {
 	esil->ops = NULL;
 	r_anal_esil_interrupts_fini (esil);
 	r_anal_esil_sources_fini (esil);
+	r_anal_esil_hooks_free (esil->hooks);
 	sdb_free (esil->stats);
 	esil->stats = NULL;
 	sdb_free (esil->db_trace);
