@@ -1087,12 +1087,12 @@ typedef int (*RAnalEsilImpHookMemReadCB)(void *user, ut64 addr, ut8 *buf, int le
 
 typedef void (*RAnalEsilObsHookMemWriteCB)(void *user, ut64 addr, ut8 *buf, int len);
 typedef bool (*RAnalEsilModHookMemWriteCB)(void *user, ESIL *esil, ut64 addr, ut8 *buf, int len);
-typedef bool (*RAnalEsilImpHookMemWriteCB)(void *user, ut64 addr, ut8 *buf, int len);
+typedef int (*RAnalEsilImpHookMemWriteCB)(void *user, ut64 addr, ut8 *buf, int len);
 
 
-typedef void (*RAnalEsilObsHookRegReadCB)(void *user, const char *regname);	//should this get the size too?
-typedef bool (*RAnalEsilModHookRegReadCB)(void *user, ESIL *esil, const char *regname, ut64 *val);
-typedef ut64 (*RAnalEsilImpHookRegReadCB)(void *user, const char *regname);
+typedef void (*RAnalEsilObsHookRegReadCB)(void *user, const char *regname);
+typedef bool (*RAnalEsilModHookRegReadCB)(void *user, ESIL *esil, const char *regname, ut64 *val, ut32 *size);
+typedef bool (*RAnalEsilImpHookRegReadCB)(void *user, const char *regname, ut64 *val, ut32 *size);
 
 
 typedef void (*RAnalEsilObsHookRegWriteCB)(void *user, const char *regname, ut64 val);

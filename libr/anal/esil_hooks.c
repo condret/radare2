@@ -47,7 +47,7 @@ R_API bool r_anal_esil_set_mem_read_imp (RAnalEsil *esil, RAnalEsilImpHookMemRea
 	return true;
 }
 
-R_API void r_anal_esil_del_mem_read_imp (RAnalEsil *esil) {	//should this return the user?
+R_API void r_anal_esil_del_mem_read_imp (RAnalEsil *esil) {
 	r_return_if_fail (esil && esil->hooks);
 	R_FREE (esil->hooks->mem_read_implementation);
 }
@@ -245,10 +245,10 @@ static bool mem_read_obsv_wrap (void *user, void *data, ut32 id) {
 	return true;
 }
 
-R_API int r_anal_esil_mem_read_at2 (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
+R_API int r_anal_esil_mem_read_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
 	r_return_val_if_fail (buf && esil && esil->hooks, -1);
 	if (esil->hooks->mem_read_modifier) {
-		if (!esil->hooks->mem_read_modifier->mmr (esil->hooks->mem_read_implementation->user, esil, addr, buf, len)) {
+		if (!esil->hooks->mem_read_modifier->mmr (esil->hooks->mem_read_modifier->user, esil, addr, buf, len)) {
 			return len;
 		}
 	}
@@ -260,7 +260,7 @@ R_API int r_anal_esil_mem_read_at2 (RAnalEsil *esil, ut64 addr, ut8 *buf, int le
 	return len;
 }
 
-R_API r_esil_mem_write_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
+R_API bool r_esil_mem_write_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
 	r_return_val_if_fail (buf && esil && esil->hooks && esil->hooks->mem_write_implementation, -1);
 	return esil->hooks->mem_write_implementation->imw (esil->hooks->mem_write_implementation->user, addr, buf, len);
 }
@@ -273,7 +273,7 @@ static bool mem_write_obsv_wrap (void *user, void *data, ut32 id) {
 	return true;
 }
 
-R_API int r_anal_esil_mem_write_at2 (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
+R_API int r_anal_esil_mem_write_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
 	r_return_val_if_fail (buf && esil && esil->hooks, -1);
 	// iterate first, befor applying modifiers, bc observers might need to read from addr first
 	MemUser mu = { addr, len, buf, R_NEWS (ut8, len)};
@@ -285,12 +285,12 @@ R_API int r_anal_esil_mem_write_at2 (RAnalEsil *esil, ut64 addr, ut8 *buf, int l
 			return len;
 		}
 	}
-	return r_esil_mem_write_at (esil, addr, buf, len);
+	return r_esil_mem_write_at (esil, addr, buf, len) ? len : -1;	//trigger trap here
 }
 
-R_API ut64 r_esil_reg_read (RAnalEsil *esil, const char *regname) {
-	r_return_val_if_fail (regname && esil && esil->hooks && esil->hooks->reg_read_implementation, 0LL);	//this kinda sucks
-	return esil->hooks->reg_read_implementation->irr (esil->hooks->reg_read_implementation->user, regname);
+R_API bool r_esil_reg_read (RAnalEsil *esil, const char *regname, ut64 *val, ut32 *size) {
+	r_return_val_if_fail (val && regname && esil && esil->hooks && esil->hooks->reg_read_implementation, false);
+	return esil->hooks->reg_read_implementation->irr (esil->hooks->reg_read_implementation->user, regname, val, size);
 }
 
 static bool reg_read_obsv_wrap (void *user, void *data, ut32 id) {
@@ -300,12 +300,11 @@ static bool reg_read_obsv_wrap (void *user, void *data, ut32 id) {
 	return true;
 }
 
-R_API ut64 r_anal_esil_reg_read2 (RAnalEsil *esil, const char *regname) {
-	r_return_val_if_fail (regname && esil && esil->hooks, 0LL);
+R_API bool r_anal_esil_reg_read (RAnalEsil *esil, const char *regname, ut64 *val, ut32 *size) {
+	r_return_val_if_fail (val && regname && esil && esil->hooks, 0LL);
 	if (esil->hooks->reg_read_modifier) {
-		ut64 v;
-		if (!esil->hooks->reg_read_modifier->mrr (esil->hooks->reg_read_modifier->user, esil, regname, &v)) {
-			return v;
+		if (!esil->hooks->reg_read_modifier->mrr (esil->hooks->reg_read_modifier->user, esil, regname, val, size)) {
+			return true;
 		}
 	}
 	r_id_storage_foreach (esil->hooks->reg_read_observers, reg_read_obsv_wrap, regname);	//iterate over observers here
