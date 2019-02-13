@@ -260,7 +260,7 @@ R_API int r_anal_esil_mem_read_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len
 	return len;
 }
 
-R_API bool r_esil_mem_write_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
+R_API int r_esil_mem_write_at (RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
 	r_return_val_if_fail (buf && esil && esil->hooks && esil->hooks->mem_write_implementation, -1);
 	return esil->hooks->mem_write_implementation->imw (esil->hooks->mem_write_implementation->user, addr, buf, len);
 }

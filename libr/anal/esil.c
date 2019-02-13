@@ -205,7 +205,7 @@ static bool alignCheck(RAnalEsil *esil, ut64 addr) {
 
 static int internal_esil_mem_read(RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
 	if (!esil || !esil->anal || !esil->anal->iob.io) {
-		return 0;
+		return false;
 	}
 	addr &= esil->addrmask;
 	if (!alignCheck (esil, addr)) {
@@ -372,8 +372,9 @@ R_API int r_anal_esil_mem_write(RAnalEsil *esil, ut64 addr, const ut8 *buf, int 
 	return ret;
 }
 
-static int internal_esil_reg_read(RAnalEsil *esil, const char *regname, ut64 *num, int *size) {
-	RRegItem *reg = r_reg_get (esil->anal->reg, regname, -1);
+static bool internal_esil_reg_read(void *user, const char *regname, ut64 *num, int *size) {
+	RReg *regs = (RReg *)user;
+	RRegItem *reg = r_reg_get (regs, regname, -1);
 	if (reg) {
 		if (size) {
 			*size = reg->size;
@@ -386,24 +387,22 @@ static int internal_esil_reg_read(RAnalEsil *esil, const char *regname, ut64 *nu
 	return false;
 }
 
-static int internal_esil_reg_write(RAnalEsil *esil, const char *regname, ut64 num) {
-	if (esil && esil->anal) {
-		RRegItem *reg = r_reg_get (esil->anal->reg, regname, -1);
-		if (reg) {
-			r_reg_set_value (esil->anal->reg, reg, num);
-			return true;
-		}
+static bool internal_esil_reg_write(void *user, const char *regname, ut64 num) {
+	RReg *regs = (RReg *)user;
+	RRegItem *reg = r_reg_get (regs, regname, -1);
+	if (reg) {
+		r_reg_set_value (regs, reg, num);
+		return true;
 	}
 	return false;
 }
-static int internal_esil_reg_write_no_null (RAnalEsil *esil, const char *regname, ut64 num) {
-	if (!esil || !esil->anal->reg) {
-		return false;
-	}
-	RRegItem *reg = r_reg_get (esil->anal->reg, regname, -1);
-	const char *pc = r_reg_get_name (esil->anal->reg, R_REG_NAME_PC);
-	const char *sp = r_reg_get_name (esil->anal->reg, R_REG_NAME_SP);
-	const char *bp = r_reg_get_name (esil->anal->reg, R_REG_NAME_BP);
+
+static int internal_esil_reg_write_no_null (void *user, const char *regname, ut64 num) {
+	RReg *regs = (RReg *)user;
+	RRegItem *reg = r_reg_get (regs, regname, -1);
+	const char *pc = r_reg_get_name (regs, R_REG_NAME_PC);
+	const char *sp = r_reg_get_name (regs, R_REG_NAME_SP);
+	const char *bp = r_reg_get_name (regs, R_REG_NAME_BP);
 	//trick to protect strcmp from segfaulting with out making the condition complex
 	if (!pc) {
 		pc = "pc";
@@ -415,7 +414,7 @@ static int internal_esil_reg_write_no_null (RAnalEsil *esil, const char *regname
 		bp = "bp";
 	}
 	if (reg && reg->name && ((strcmp (reg->name , pc) && strcmp (reg->name, sp) && strcmp(reg->name, bp)) || num)) { //I trust k-maps
-		r_reg_set_value (esil->anal->reg, reg, num);
+		r_reg_set_value (regs, reg, num);
 		return true;
 	}
 	return false;
@@ -635,15 +634,6 @@ R_API int r_anal_esil_reg_write(RAnalEsil *esil, const char *dst, ut64 num) {
 	return ret;
 }
 
-R_API int r_anal_esil_reg_read_nocallback(RAnalEsil *esil, const char *regname, ut64 *num, int *size) {
-	int ret;
-	void *old_hook_reg_read = (void *) esil->cb.hook_reg_read;
-	esil->cb.hook_reg_read = NULL;
-	ret = r_anal_esil_reg_read (esil, regname, num, size);
-	esil->cb.hook_reg_read = old_hook_reg_read;
-	return ret;
-}
-
 R_API int r_anal_esil_reg_read(RAnalEsil *esil, const char *regname, ut64 *num, int *size) {
 	bool ret = false;
 	ut64 localnum; // XXX why is this necessary?
@@ -687,7 +677,7 @@ static int esil_eq(RAnalEsil *esil) {
 		free (src2);
 	}
 
-	if (src && dst && r_anal_esil_reg_read_nocallback (esil, dst, &num, NULL)) {
+	if (src && dst && r_esil_reg_read (esil, dst, &num, NULL)) {
 		if (r_anal_esil_get_parm (esil, src, &num2)) {
 			ret = r_anal_esil_reg_write (esil, dst, num2);
 			if (ret && r_anal_esil_get_parm_type (esil, src) != R_ANAL_ESIL_PARM_INTERNAL) { //necessary for some flag-things
@@ -3235,20 +3225,28 @@ R_API int r_anal_esil_setup(RAnalEsil *esil, RAnal *anal, int romem, int stats, 
 	esil->trap = 0;
 	esil->trap_code = 0;
 	//esil->user = NULL;
-	esil->cb.reg_read = internal_esil_reg_read;
-	esil->cb.mem_read = internal_esil_mem_read;
+	
+//	esil->cb.reg_read = internal_esil_reg_read;
+	r_anal_esil_set_reg_read_imp (esil->anal->reg, internal_esil_reg_read, esil);
+//	esil->cb.mem_read = internal_esil_mem_read;
 
 	if (nonull) {
 		// this is very questionable, most platforms allow accessing NULL
 		// never writes zero to PC, BP, SP, why? because writing
 		// zeros to these registers is equivalent to acessing NULL
 		// pointer somehow
-		esil->cb.reg_write = internal_esil_reg_write_no_null;
+		r_anal_esil_set_reg_write_imp (esil->anal->reg, internal_esil_reg_write_no_null, esil);
+//		esil->cb.reg_write = internal_esil_reg_write_no_null;
+		r_anal_esil_set_mem_read_imp (esil, internal_esil_mem_read_no_null, esil);
+		r_anal_esil_set_mem_write_imp (esil, internal_esil_mem_write_no_null, esil);
 		esil->cb.mem_read = internal_esil_mem_read_no_null;
 		esil->cb.mem_write = internal_esil_mem_write_no_null;
 
 	} else {
+		r_anal_esil_set_reg_write_imp (esil->anal->reg, internal_esil_reg_write, esil);
 		esil->cb.reg_write = internal_esil_reg_write;
+		r_anal_esil_set_mem_read_imp (esil, internal_esil_mem_read, esil);
+		r_anal_esil_set_mem_write_imp (esil, internal_esil_mem_write, esil);
 		esil->cb.mem_read = internal_esil_mem_read;
 		esil->cb.mem_write = internal_esil_mem_write;
 	}
