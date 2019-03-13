@@ -5,49 +5,26 @@
 #define DB esil->db_trace
 #define KEY(x) sdb_fmt ("%d."x, esil->trace_idx)
 #define KEYAT(x,y) sdb_fmt ("%d."x".0x%"PFMT64x, esil->trace_idx, y)
-#define KEYREG(x,y) sdb_fmt ("%d."x".%s", esil->trace_idx, y)
+#define KEYREG(x,y) sdb_fmt ("%d."x".%s", trace_idx, y)
 
 static int ocbs_set = false;
 static RAnalEsilCallbacks ocbs = {0};
 
-static int trace_hook_reg_read(RAnalEsil *esil, const char *name, ut64 *res, int *size) {
-	int ret = 0;
-	if (*name=='0') {
-		//eprintf ("Register not found in profile\n");
-		return 0;
-	}
-	if (ocbs.hook_reg_read) {
-		RAnalEsilCallbacks cbs = esil->cb;
-		esil->cb = ocbs;
-		ret = ocbs.hook_reg_read (esil, name, res, size);
-		esil->cb = cbs;
-	}
-	if (!ret && esil->cb.reg_read) {
-		ret = esil->cb.reg_read (esil, name, res, size);
-	}
-	if (ret) {
-		ut64 val = *res;
-		//eprintf ("[ESIL] REG READ %s 0x%08"PFMT64x"\n", name, val);
+static int trace_hook_reg_read(void *user, const char *name) {
+	RAnalEsil *esil = (RAnalEsil *)user;
+	ut64 val;
+	if (r_esil_reg_read (esil, name, &val, NULL)) {
+//this is highly questionable, maybe we should pass the val from r_anal_esil_reg_read for better perf
 		sdb_array_add (DB, KEY ("reg.read"), name, 0);
 		sdb_num_set (DB, KEYREG ("reg.read", name), val, 0);
-	} //else {
-		//eprintf ("[ESIL] REG READ %s FAILED\n", name);
-	//}
+	}
 	return ret;
 }
 
-static int trace_hook_reg_write(RAnalEsil *esil, const char *name, ut64 *val) {
-	int ret = 0;
-	//eprintf ("[ESIL] REG WRITE %s 0x%08"PFMT64x"\n", name, *val);
+static void trace_hook_reg_write(void *user, const char *name, ut64 val) {
+	RAnalEsil *esil = (RAnalEsil *)user;
 	sdb_array_add (DB, KEY ("reg.write"), name, 0);
-	sdb_num_set (DB, KEYREG ("reg.write", name), *val, 0);
-	if (ocbs.hook_reg_write) {
-		RAnalEsilCallbacks cbs = esil->cb;
-		esil->cb = ocbs;
-		ret = ocbs.hook_reg_write (esil, name, val);
-		esil->cb = cbs;
-	}
-	return ret;
+	sdb_num_set (DB, KEYREG ("reg.write", name), val, 0);
 }
 
 static int trace_hook_mem_read(RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
