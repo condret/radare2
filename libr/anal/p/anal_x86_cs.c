@@ -335,6 +335,8 @@ static void anop_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len,
 		(a->bits==32)?"ebp":"rbp";
 	const char *si = (a->bits==16)?"si":
 		(a->bits==32)?"esi":"rsi";
+	const char *di = (a->bits==16)?"di":
+		(a->bits==32)?"edi":"rdi";
 	struct Getarg gop = {
 		.handle = *handle,
 		.insn = insn,
@@ -1781,7 +1783,23 @@ static void anop_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len,
 	}
 
 	if (op->prefix & R_ANAL_OP_PREFIX_REP) {
-		r_strbuf_appendf (&op->esil, ",%s,--=,%s,?{,5,GOTO,}", counter, counter);
+		ut8 thing = 0;
+		switch (insn->id) {
+			case X86_INS_CMPSW:
+				thing = 2;
+				break;
+			case X86_INS_CMPSD:
+				thing = 4;
+				break;
+			case X86_INS_CMPSQ:
+				thing = 8;
+				break;
+			case X86_INS_CMPSB:
+				thing = 1;
+				break;
+		}
+		r_strbuf_appendf (&op->esil, ",df,?{,%d,%s,-=,%d,%s,-=,}{,%d,%s,+=,%d,%s,+=,},%s,--=,$z,!,?{,0,GOTO,}",
+				thing, si, thing, di, thing, si, thing, di, counter);
 	}
 }
 
