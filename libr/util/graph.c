@@ -37,7 +37,7 @@ static int node_cmp (unsigned int idx, RGraphNode *b) {
 	return idx == b->idx ? 0 : -1;
 }
 
-static void dfs_node (RGraph *g, RGraphNode *n, RGraphVisitor *vis, int color[]) {
+static void dfs_node (RGraph *g, RGraphNode *n, RGraphVisitor *vis, int color[], int dir) {
 	RStack *s = r_stack_new (2 * g->n_edges + 1);
 	if (!s) {
 		return;
@@ -87,7 +87,7 @@ static void dfs_node (RGraph *g, RGraphNode *n, RGraphVisitor *vis, int color[])
 		r_stack_push (s, edg);
 
 		i = 0;
-		const RList *neighbours = r_graph_get_neighbours (g, cur);
+		const RList *neighbours = dir ? r_graph_get_neighbours (g, cur) : n->in_nodes;
 		r_list_foreach (neighbours, it, v) {
 			edg = R_NEW (RGraphEdge);
 			edg->from = cur;
@@ -267,7 +267,7 @@ R_API void r_graph_dfs_node (RGraph *g, RGraphNode *n, RGraphVisitor *vis) {
 	}
 	int *color = R_NEWS0 (int, g->last_index);
 	if (color) {
-		dfs_node (g, n, vis, color);
+		dfs_node (g, n, vis, color, 1);
 		free (color);
 	}
 }
@@ -281,7 +281,7 @@ R_API void r_graph_dfs (RGraph *g, RGraphVisitor *vis) {
 	if (color) {
 		r_list_foreach (g->nodes, it, n) {
 			if (color[n->idx] == WHITE_COLOR) {
-				dfs_node (g, n, vis, color);
+				dfs_node (g, n, vis, color, 1);
 			}
 		}
 		free (color);
