@@ -272,6 +272,17 @@ R_API void r_graph_dfs_node (RGraph *g, RGraphNode *n, RGraphVisitor *vis) {
 	}
 }
 
+R_API void r_graph_dfs_node_reverse (RGraph *g, RGraphNode *n, RGraphVisitor *vis) {
+	if (!g || !n || !vis) {
+		return;
+	}
+	int *color = R_NEWS0 (int, g->last_index);
+	if (color) {
+		dfs_node (g, n, vis, color, 0);
+		free (color);
+	}
+}
+
 R_API void r_graph_dfs (RGraph *g, RGraphVisitor *vis) {
 	r_return_if_fail (g && vis);
 	RGraphNode *n;
