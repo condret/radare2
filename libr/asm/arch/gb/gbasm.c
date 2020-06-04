@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2012-2018 - condret, pancake */
+/* radare - LGPL - Copyright 2012-2020 - condret, pancake */
 
 #include <r_util.h>
 #include <r_types.h>
@@ -112,7 +112,7 @@ static int gb_parse_arith1 (ut8 *buf, const int minlen, char *buf_asm, ut8 base,
 
 static bool gb_parse_ld1 (ut8 *buf, const int minlen, char *buf_asm) {
 	int i;
-	r_str_replace_in (buf_asm, strlen (buf_asm), ", ", ",", true);
+	r_str_replace_in (buf_asm, strlen (buf_asm), ", ", ",", true);	//move that in the switch case
 	if ((i = strlen (buf_asm)) < minlen) {
 		return false;
 	}
@@ -127,13 +127,15 @@ static bool gb_parse_ld1 (ut8 *buf, const int minlen, char *buf_asm) {
 			return false;
 		}
 		buf[0] |= (ut8)i;
+		return true;
 	} else if (!strncmp (buf_asm + 3, "[hl],", 5)) {
 		if ((i = gb_reg_idx (buf_asm[8])) == (-1)) {
 			return false;
 		}
 		buf[0] = 0x70 | (ut8)i;
+		return true;
 	}
-	return true;
+	return false;
 }
 
 static bool gb_parse_ld2 (ut8 *buf, char *buf_asm) {
@@ -157,6 +159,38 @@ static bool gb_parse_ld2 (ut8 *buf, char *buf_asm) {
 		return true;
 	}
 	return false;
+}
+
+static bool gb_parse_ld3 (ut8 *buf, char *buf_asm) {
+	if (strlen (buf_asm) < 7) {
+		return false;
+	}
+	if (buf_asm[5] != ',') {
+		return false;
+	}
+
+	const ut32 reg = (buf_asm[3] << 8) | buf_asm[4];
+	switch (reg) {
+	case 0x6263:	//bc
+		buf[0] = 0x01;
+		break;
+	case 0x6465:	//de
+		buf[0] = 0x11;
+		break;
+	case 0x686c:	//hl
+		buf[0] = 0x21;
+		break;
+	case 0x7370:	//sp
+		buf[0] = 0x31;
+		break;
+	default:
+		return false;
+	}
+
+	const ut64 num = r_num_get (NULL, &buf_asm[6]);
+	buf[1] = num & 0xff;
+	buf[2] = (num & 0xff00) >> 8;
+	return true;
 }
 
 static int gbAsm(RAsm *a, RAsmOp *op, const char *buf) {
@@ -370,7 +404,10 @@ static int gbAsm(RAsm *a, RAsmOp *op, const char *buf) {
 		if (!gb_parse_ld1 (opbuf, 6, buf_asm)) {
 			len++;
 			if (!gb_parse_ld2 (opbuf, buf_asm)) {
-				len = 0;
+				len++;
+				if (!gb_parse_ld3 (opbuf, buf_asm)) {
+					len = 0;
+				}
 			}
 		}
 		break;
