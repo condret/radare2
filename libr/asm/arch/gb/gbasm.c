@@ -12,7 +12,7 @@ static void str_op(char *c) {
 }
 
 static int gb_reg_idx (char r) {
-	const char *rstr = "bcdehla";
+	const char *rstr = "bcdehl a";
 	const char *ptr = strchr (rstr, r);
 	return ptr?(int)(size_t)(ptr-rstr):-1;
 }
@@ -123,13 +123,18 @@ static bool gb_parse_ld1 (ut8 *buf, const int minlen, char *buf_asm) {
 			return false;
 		}
 		buf[0] = (ut8)(0x40 + (i * 8));
-		if ((i = gb_reg_idx (buf_asm[5])) == (-1)) {
-			return false;
+		i = gb_reg_idx (buf_asm[5]);
+		if (i == (-1)) {
+			if (strncmp(&buf_asm[5], "[hl]", 4)) {
+				return false;
+			}
+			i = 6;
 		}
 		buf[0] |= (ut8)i;
 		return true;
-	} else if (!strncmp (buf_asm + 3, "[hl],", 5)) {
+	} else if (!strncmp (&buf_asm[3], "[hl],", 5)) {
 		if ((i = gb_reg_idx (buf_asm[8])) == (-1)) {
+			//'ld [hl], [hl]' does not exist
 			return false;
 		}
 		buf[0] = 0x70 | (ut8)i;
@@ -401,6 +406,9 @@ static int gbAsm(RAsm *a, RAsmOp *op, const char *buf) {
 		opbuf[0] = 0xfb;
 		break;
 	case 0x6c64: //ld
+		i = strlen (buf_asm);
+		r_str_replace_in (buf_asm, (ut32)i, "[ ", "[", true);
+		r_str_replace_in (buf_asm, (ut32)i, " ]", "]", true);
 		if (!gb_parse_ld1 (opbuf, 6, buf_asm)) {
 			len++;
 			if (!gb_parse_ld2 (opbuf, buf_asm)) {
