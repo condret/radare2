@@ -552,7 +552,7 @@ static int gbAsm(RAsm *a, RAsmOp *op, const char *buf) {
 		{
 			char *p = strchr (buf_asm, (int)',');
 			if (!p) {
-				num = r_num_get (NULL, &buf_asm[3]);
+				num = r_num_get (NULL, &buf_asm[4]);
 				len = 3;
 				opbuf[0] = 0xcd;
 				opbuf[1] = (ut8)(num & 0xff);
