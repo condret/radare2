@@ -5,7 +5,7 @@
 
 #include <r_util.h>
 #include <r_bin.h>
-#include <r_reg.h>
+#include <r_esil.h>
 #include <r_lib.h>
 
 // Rename to R_ARCH_VALTYPE_*

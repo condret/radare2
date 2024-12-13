@@ -401,6 +401,8 @@ R_API void r_esil_mem_ro(REsil *esil, bool mem_readonly);
 R_API void r_esil_stats(REsil *esil, REsilStats *stats, bool enable);
 
 /* trace */
+R_API bool r_esil_trace_init(REsilTrace *trace, REsil *esil, RReg *reg,
+	ut64 stack_addr, ut64 stack_size);
 R_API REsilTrace *r_esil_trace_new(REsil *esil);
 R_API void r_esil_trace_free(REsilTrace *trace);
 R_API void r_esil_trace_op(REsil *esil, struct r_anal_op_t *op);
