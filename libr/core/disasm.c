@@ -5308,6 +5308,31 @@ static bool mymemwrite2(REsil *esil, ut64 addr, const ut8 *buf, int len) {
 	return (addr >= min && addr < max);
 }
 
+#if USE_NEW_ESIL
+static char *ssa_get(RDisasmState *ds, const char *reg) {
+	if (isdigit ((ut8)*reg)) {
+		return strdup (reg);
+	}
+	int n = sdb_num_get (ds->ssa, reg, NULL);
+	return r_str_newf ("%s_%d", reg, n);
+}
+
+static void ssa_set(RDisasmState *ds, const char *reg) {
+	(void)sdb_num_inc (ds->ssa, reg, 1, 0);
+}
+
+static bool myregread(void *user, const char *name, ut64 *res, int *size) {
+	RDisasmState *ds = user;
+	if (ds && ds->show_emu_ssa && name) {
+		if (!isdigit ((ut8)*name)) {
+			char *r = ssa_get (ds, name);
+			ds_comment_esil (ds, true, false, "<%s", r);
+			free (r);
+		}
+	}
+	return false;
+}
+#else
 static char *ssa_get(REsil *esil, const char *reg) {
 	//RCore *core = esil->user;
 	RDisasmState *ds = esil->cb.user;
@@ -5322,6 +5347,7 @@ static void ssa_set(REsil *esil, const char *reg) {
 	RDisasmState *ds = esil->cb.user;
 	(void)sdb_num_inc (ds->ssa, reg, 1, 0);
 }
+#endif
 
 static bool myregread(REsil *esil, const char *name, ut64 *res, int *size) {
 	RDisasmState *ds = esil->cb.user;
@@ -5367,6 +5393,174 @@ static char *ds_getstring(RDisasmState *ds, const char *str, int len, const char
 	return escstr;
 }
 
+#if USE_NEW_ESIL
+static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
+	R_RETURN_VAL_IF_FAIL (user, false);
+	char str[64], *msg = NULL;
+	ut32 *n32 = (ut32*)str;
+	RDisasmState *ds = user;
+	const bool be = R_ARCH_CONFIG_IS_BIG_ENDIAN (ds->core->rasm->config);
+	if (!ds->show_emu_strlea && ds->analop.type == R_ANAL_OP_TYPE_LEA) {
+		// useful for ARM64
+		// reduce false positives in emu.str=true when loading strings via adrp+add
+		return true;
+	}
+	if (ds->pj) {
+		// "pdJ" -> reg: value
+		pj_kn (ds->pj, name, *val);
+	}
+	ds->esil_likely = true;
+	if (ds->show_emu_ssa) {
+		ssa_set (ds, name);
+		char *r = ssa_get (ds, name);
+		ds_comment_esil (ds, true, false, ">%s", r);
+		free (r);
+		return true;
+	}
+	if (!ds->show_slow) {
+		return true;
+	}
+	memset (str, 0, sizeof (str));
+	if (*val) {
+		bool emu_str_printed = false;
+		char *type = NULL;
+		(void)r_io_read_at (ds->core->io, *val, (ut8*)str, sizeof (str)-1);
+		str[sizeof (str) - 1] = 0;
+		ds->emuptr = *val;
+		// support cstring here
+		{
+			ut64 *cstr = (ut64*) str;
+			ut64 addr = cstr[0];
+			if (!(*val >> 32)) {
+				addr = addr & UT32_MAX;
+			}
+			if (cstr[0] == 0 && cstr[1] < 0x1000) {
+				ut64 addr = cstr[2];
+				if (!(*val >> 32)) {
+					addr = addr & UT32_MAX;
+				}
+				(void)r_io_read_at (ds->core->io, addr,
+					(ut8*)str, sizeof (str)-1);
+			//	eprintf ("IS CSTRING 0x%llx %s\n", addr, str);
+				type = r_str_newf ("(cstr 0x%08"PFMT64x") ", addr);
+				ds->printed_str_addr = cstr[2];
+			} else if (r_io_is_valid_offset (ds->core->io, addr, 0)) {
+				ds->printed_str_addr = cstr[0];
+				type = r_str_newf ("(pstr 0x%08"PFMT64x") ", addr);
+				(void)r_io_read_at (ds->core->io, addr,
+					(ut8*)str, sizeof (str) - 1);
+			//	eprintf ("IS PSTRING 0x%llx %s\n", addr, str);
+			}
+		}
+		if (*str && !r_bin_strpurge (ds->core->bin, str, *val) && r_str_is_printable_incl_newlines (str)
+		    && (ds->printed_str_addr == UT64_MAX || *val != ds->printed_str_addr)) {
+			bool jump_op = false;
+			bool ignored = false;
+			switch (ds->analop.type) {
+			case R_ANAL_OP_TYPE_JMP:
+			case R_ANAL_OP_TYPE_UJMP:
+			case R_ANAL_OP_TYPE_RJMP:
+			case R_ANAL_OP_TYPE_IJMP:
+			case R_ANAL_OP_TYPE_IRJMP:
+			case R_ANAL_OP_TYPE_CJMP:
+			case R_ANAL_OP_TYPE_MJMP:
+			case R_ANAL_OP_TYPE_UCJMP:
+			// case R_ANAL_OP_TYPE_RCALL:
+			// case R_ANAL_OP_TYPE_UCALL:
+				jump_op = true;
+				break;
+			case R_ANAL_OP_TYPE_CALL:
+			case R_ANAL_OP_TYPE_TRAP:
+			case R_ANAL_OP_TYPE_RET:
+				ignored = true;
+				break;
+			// case R_ANAL_OP_TYPE_STORE:
+			// case R_ANAL_OP_TYPE_LOAD:
+				ignored = true;
+				break;
+			case R_ANAL_OP_TYPE_LEA:
+				if (ds->core->rasm->config->bits == 64 &&
+					r_str_startswith (r_config_get (ds->core->config, "asm.arch"), "arm")) {
+					ignored = true;
+				}
+				break;
+			}
+			if (!jump_op && !ignored) {
+				ut32 len = sizeof (str) -1;
+				ds->emuptr = *val;
+				if (ds->pj) {
+					// "pdJ"
+					pj_ks (ds->pj, "str", str);
+				}
+				const char *prefix = "";
+				char *escstr = ds_getstring (ds, str, len, &prefix);
+				if (escstr) {
+					char *m;
+					if (ds->show_color) {
+						bool inv = ds->show_emu_strinv;
+						m = r_str_newf ("%s%s%s\"%s\"%s",
+								prefix, r_str_get (type), inv? Color_INVERT: "",
+								escstr, inv? Color_INVERT_RESET: "");
+					} else {
+						m = r_str_newf ("%s%s\"%s\"", prefix, r_str_get (type), escstr);
+					}
+					msg = r_str_append_owned (msg, m);
+					emu_str_printed = true;
+					free (escstr);
+				}
+			}
+		} else {
+			if (!*n32) {
+				// msg = strdup ("NULL");
+			} else if (*n32 == UT32_MAX) {
+				/* nothing */
+			} else {
+				if (!ds->show_emu_str) {
+					ut32 v = r_read_ble32 (n32, be);
+					msg = r_str_appendf (msg, "-> 0x%x", v);
+				}
+			}
+		}
+		R_FREE (type);
+		if ((ds->printed_flag_addr == UT64_MAX || *val != ds->printed_flag_addr)
+		    && (ds->show_emu_strflag || !emu_str_printed)) {
+			RFlagItem *fi = r_flag_get_in (ds->core->anal->flb.f, *val);
+			if (fi && (!ds->opstr || !strstr (ds->opstr, fi->name))) {
+				msg = r_str_appendf (msg, "%s%s", R_STR_ISNOTEMPTY (msg)? " " : "", fi->name);
+				if (ds->pj) {
+					pj_ks (ds->pj, "flag", fi->name);
+				}
+			}
+		}
+	}
+	if (ds->show_emu_str) {
+		if (R_STR_ISNOTEMPTY (msg)) {
+			ds->emuptr = *val;
+			if (ds->show_emu_stroff && *msg == '"') {
+				ds_comment_esil (ds, true, false, "%s 0x%"PFMT64x" %s", ds->cmtoken, *val, msg);
+			} else {
+				ds_comment_esil (ds, true, false, "%s %s", ds->cmtoken, msg);
+			}
+			if (ds->show_comments && !ds->show_cmt_right) {
+				ds_newline (ds);
+			}
+		}
+	} else {
+		if (R_STR_ISEMPTY (msg)) {
+			ds_comment_esil (ds, true, false, "%s %s=0x%"PFMT64x, ds->cmtoken, name, *val);
+		} else {
+			ds_comment_esil (ds, true, false, "%s %s=0x%"PFMT64x" %s", ds->cmtoken, name, *val, msg);
+		}
+		if (ds->show_comments && !ds->show_cmt_right) {
+			ds_newline (ds);
+		}
+	}
+	free (msg);
+	return false;
+}
+
+}
+#else
 static bool myregwrite(REsil *esil, const char *name, ut64 *val) {
 	char str[64], *msg = NULL;
 	ut32 *n32 = (ut32*)str;
@@ -5533,6 +5727,7 @@ static bool myregwrite(REsil *esil, const char *name, ut64 *val) {
 	free (msg);
 	return false;
 }
+#endif
 
 static void ds_pre_emulation(RDisasmState *ds) {
 	bool do_esil = ds->show_emu;
