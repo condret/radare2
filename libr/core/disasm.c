@@ -5742,12 +5742,18 @@ static void ds_pre_emulation(RDisasmState *ds) {
 	REsil *esil = ds->core->anal->esil;
 	int i, end = ds->core->addr - base;
 	int maxemu = 1024 * 1024;
+#if USE_NEW_ESIL
+#else
 	REsilHookRegWriteCB orig_cb = esil->cb.hook_reg_write;
+#endif
 	if (end < 0 || end > maxemu) {
 		return;
 	}
 	ds->stackptr = ds->core->anal->stackptr;
+#if USE_NEW_ESIL
+#else
 	esil->cb.hook_reg_write = NULL;
+#endif
 	const ut64 pc = r_reg_getv (ds->core->anal->reg, "PC");
 	for (i = 0; i < end; i++) {
 		ut64 addr = base + i;
@@ -5767,7 +5773,10 @@ static void ds_pre_emulation(RDisasmState *ds) {
 		}
 	}
 	r_reg_setv (ds->core->anal->reg, "PC", pc);
+#if USE_NEW_ESIL
+#else
 	esil->cb.hook_reg_write = orig_cb;
+#endif
 }
 
 static void ds_print_esil_anal_init(RDisasmState *ds) {
@@ -6089,7 +6098,6 @@ static void ds_comment_call(RDisasmState *ds) {
 static void ds_print_esil_anal(RDisasmState *ds) {
 	RCore *core = ds->core;
 	REsil *esil = core->anal->esil;
-	bool (*hook_mem_write)(REsil *esil, ut64 addr, const ut8 *buf, int len) = NULL;
 	ut64 at = r_core_pava (core, ds->at);
 	if (!ds->show_comments) {
 		return;
@@ -6113,9 +6121,27 @@ static void ds_print_esil_anal(RDisasmState *ds) {
 	}
 	esil = core->anal->esil;
 	r_reg_setv (core->anal->reg, "PC", at + ds->analop.size);
+#if USE_NEW_ESIL
+	ut32 voy[R_ESIL_VOYEUR_LAST];
+	voy[R_ESIL_VOYEUR_REG_WRITE] = r_esil_add_voyeur (esil, ds,
+		myregwrite, R_ESIL_VOYEUR_REG_WRITE);
+	voy[R_ESIL_VOYEUR_REG_READ] = r_esil_add_voyeur (esil, ds,
+		myregread, R_ESIL_VOYEUR_REG_READ);
+	if (ds->show_emu_stack) {
+		voy[R_ESIL_VOYEUR_MEM_WRITE] = r_esil_add_voyeur (esil,
+			ds, mymemwrite2, R_ESIL_VOYEUR_MEM_WRITE);
+	} else if (ds->show_emu_write) {
+		voy[R_ESIL_VOYEUR_MEM_WRITE] = r_esil_add_voyeur (esil,
+			ds, mymemwrite0, R_ESIL_VOYEUR_MEM_WRITE);
+	} else {
+		voy[R_ESIL_VOYEUR_MEM_WRITE] = r_esil_add_voyeur (esil,
+			ds, mymemwrite1, R_ESIL_VOYEUR_MEM_WRITE);
+	}
+#else
 	esil->cb.user = ds;
 	esil->cb.hook_reg_write = myregwrite;
 	esil->cb.hook_reg_read = myregread;
+	bool (*hook_mem_write)(REsil *esil, ut64 addr, const ut8 *buf, int len) = NULL;
 	hook_mem_write = esil->cb.hook_mem_write;
 	if (ds->show_emu_stack) {
 		esil->cb.hook_mem_write = mymemwrite2;
@@ -6126,6 +6152,7 @@ static void ds_print_esil_anal(RDisasmState *ds) {
 			esil->cb.hook_mem_write = mymemwrite1;
 		}
 	}
+#endif
 	ds->esil_likely = 0;
 	const char *esilstr = R_STRBUF_SAFEGET (&ds->analop.esil);
 	if (R_STR_ISNOTEMPTY (esilstr)) {
@@ -6175,9 +6202,12 @@ static void ds_print_esil_anal(RDisasmState *ds) {
 	}
 	ds_print_color_reset (ds);
 beach:
+#if USE_NEW_ESIL
+#else
 	if (esil) {
 		esil->cb.hook_mem_write = hook_mem_write;
 	}
+#endif
 	r_config_hold_restore (hc);
 	r_config_hold_free (hc);
 }
