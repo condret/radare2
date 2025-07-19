@@ -658,7 +658,10 @@ static void ds_print_esil_anal_fini(RDisasmState *ds) {
 	if (core && core->anal && core->anal->esil) {
 		// make sure to remove reference to ds to avoid UAF
 		core->anal->esil->user = NULL;
+#if	USE_NEW_ESIL
+#else
 		ds->core->anal->esil->cb.user = NULL;
+#endif
 	}
 }
 
@@ -6202,12 +6205,15 @@ static void ds_print_esil_anal(RDisasmState *ds) {
 	}
 	ds_print_color_reset (ds);
 beach:
-#if USE_NEW_ESIL
-#else
 	if (esil) {
+#if USE_NEW_ESIL
+		r_esil_del_voyeur (esil, voy[R_ESIL_VOYEUR_REG_WRITE]);
+		r_esil_del_voyeur (esil, voy[R_ESIL_VOYEUR_REG_READ]);
+		r_esil_del_voyeur (esil, voy[R_ESIL_VOYEUR_MEM_WRITE]);
+#else
 		esil->cb.hook_mem_write = hook_mem_write;
-	}
 #endif
+	}
 	r_config_hold_restore (hc);
 	r_config_hold_free (hc);
 }
@@ -6764,7 +6770,9 @@ toro:
 	r_cons_break_push (cons, NULL, NULL);
 
 	ds->fcn = fcnIn (ds, ds->at, R_ANAL_FCN_TYPE_NULL);
-
+#if	USE_NEW_ESIL
+	ut32 voy = R_ESIL_VOYEUR_ERR;
+#endif
 	if (ds->show_emu_bb) {
 		// check if we are in the middle of a basic block, so we can emulate the previous instructions
 		RList *list = r_anal_get_blocks_in (core->anal, ds->addr);
@@ -6772,7 +6780,10 @@ toro:
 			RAnalBlock *bb = r_list_first (list);
 			if (bb) {
 				REsil *esil = core->anal->esil;
+#if	USE_NEW_ESIL
+#else
 				esil->cb.hook_reg_write = NULL;
+#endif
 				if (bb->esil) {
 					r_esil_parse (core->anal->esil, bb->esil);
 				}
@@ -6798,7 +6809,11 @@ toro:
 						r_anal_op_free (op);
 					}
 				}
+#if	USE_NEW_ESIL
+				voy = r_esil_add_voyeur (esil, ds, myregwrite, R_ESIL_VOYEUR_REG_WRITE);
+#else
 				esil->cb.hook_reg_write = myregwrite;
+#endif
 			}
 		}
 		r_list_free (list);
@@ -6826,9 +6841,15 @@ toro:
 				if (bb->esil) {
 					REsil *esil = core->anal->esil;
 					// disable emulation callbacks
+#if	USE_NEW_ESIL
 					esil->cb.hook_reg_write = NULL;
 					r_esil_parse (core->anal->esil, bb->esil);
 					esil->cb.hook_reg_write = myregwrite;
+#else
+					r_esil_del_voyeur (esil, voy);
+					r_esil_parse (core->anal->esil, bb->esil);
+					voy = r_esil_add_voyeur (esil, ds, myregwrite, R_ESIL_VOYEUR_REG_WRITE);
+#endif
 				}
 			}
 		}
