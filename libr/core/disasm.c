@@ -6842,13 +6842,13 @@ toro:
 					REsil *esil = core->anal->esil;
 					// disable emulation callbacks
 #if	USE_NEW_ESIL
-					esil->cb.hook_reg_write = NULL;
-					r_esil_parse (core->anal->esil, bb->esil);
-					esil->cb.hook_reg_write = myregwrite;
-#else
 					r_esil_del_voyeur (esil, voy);
 					r_esil_parse (core->anal->esil, bb->esil);
 					voy = r_esil_add_voyeur (esil, ds, myregwrite, R_ESIL_VOYEUR_REG_WRITE);
+#else
+					esil->cb.hook_reg_write = NULL;
+					r_esil_parse (core->anal->esil, bb->esil);
+					esil->cb.hook_reg_write = myregwrite;
 #endif
 				}
 			}
