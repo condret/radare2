@@ -5350,7 +5350,6 @@ static void ssa_set(REsil *esil, const char *reg) {
 	RDisasmState *ds = esil->cb.user;
 	(void)sdb_num_inc (ds->ssa, reg, 1, 0);
 }
-#endif
 
 static bool myregread(REsil *esil, const char *name, ut64 *res, int *size) {
 	RDisasmState *ds = esil->cb.user;
@@ -5363,6 +5362,7 @@ static bool myregread(REsil *esil, const char *name, ut64 *res, int *size) {
 	}
 	return false;
 }
+#endif
 
 static char *ds_getstring(RDisasmState *ds, const char *str, int len, const char **prefix) {
 	char *escstr = NULL;
@@ -5410,7 +5410,7 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 	}
 	if (ds->pj) {
 		// "pdJ" -> reg: value
-		pj_kn (ds->pj, name, *val);
+		pj_kn (ds->pj, name, val);
 	}
 	ds->esil_likely = true;
 	if (ds->show_emu_ssa) {
@@ -5424,22 +5424,22 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 		return true;
 	}
 	memset (str, 0, sizeof (str));
-	if (*val) {
+	if (val) {
 		bool emu_str_printed = false;
 		char *type = NULL;
-		(void)r_io_read_at (ds->core->io, *val, (ut8*)str, sizeof (str)-1);
+		(void)r_io_read_at (ds->core->io, val, (ut8*)str, sizeof (str)-1);
 		str[sizeof (str) - 1] = 0;
-		ds->emuptr = *val;
+		ds->emuptr = val;
 		// support cstring here
 		{
-			ut64 *cstr = (ut64*) str;
+			ut64 *cstr = (ut64 *)str;
 			ut64 addr = cstr[0];
-			if (!(*val >> 32)) {
+			if (!(val >> 32)) {
 				addr = addr & UT32_MAX;
 			}
 			if (cstr[0] == 0 && cstr[1] < 0x1000) {
 				ut64 addr = cstr[2];
-				if (!(*val >> 32)) {
+				if (!(val >> 32)) {
 					addr = addr & UT32_MAX;
 				}
 				(void)r_io_read_at (ds->core->io, addr,
@@ -5455,8 +5455,8 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 			//	eprintf ("IS PSTRING 0x%llx %s\n", addr, str);
 			}
 		}
-		if (*str && !r_bin_strpurge (ds->core->bin, str, *val) && r_str_is_printable_incl_newlines (str)
-		    && (ds->printed_str_addr == UT64_MAX || *val != ds->printed_str_addr)) {
+		if (*str && !r_bin_strpurge (ds->core->bin, str, val) && r_str_is_printable_incl_newlines (str)
+		    && (ds->printed_str_addr == UT64_MAX || val != ds->printed_str_addr)) {
 			bool jump_op = false;
 			bool ignored = false;
 			switch (ds->analop.type) {
@@ -5490,7 +5490,7 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 			}
 			if (!jump_op && !ignored) {
 				ut32 len = sizeof (str) -1;
-				ds->emuptr = *val;
+				ds->emuptr = val;
 				if (ds->pj) {
 					// "pdJ"
 					pj_ks (ds->pj, "str", str);
@@ -5525,9 +5525,9 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 			}
 		}
 		R_FREE (type);
-		if ((ds->printed_flag_addr == UT64_MAX || *val != ds->printed_flag_addr)
+		if ((ds->printed_flag_addr == UT64_MAX || val != ds->printed_flag_addr)
 		    && (ds->show_emu_strflag || !emu_str_printed)) {
-			RFlagItem *fi = r_flag_get_in (ds->core->anal->flb.f, *val);
+			RFlagItem *fi = r_flag_get_in (ds->core->anal->flb.f, val);
 			if (fi && (!ds->opstr || !strstr (ds->opstr, fi->name))) {
 				msg = r_str_appendf (msg, "%s%s", R_STR_ISNOTEMPTY (msg)? " " : "", fi->name);
 				if (ds->pj) {
@@ -5538,9 +5538,9 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 	}
 	if (ds->show_emu_str) {
 		if (R_STR_ISNOTEMPTY (msg)) {
-			ds->emuptr = *val;
+			ds->emuptr = val;
 			if (ds->show_emu_stroff && *msg == '"') {
-				ds_comment_esil (ds, true, false, "%s 0x%"PFMT64x" %s", ds->cmtoken, *val, msg);
+				ds_comment_esil (ds, true, false, "%s 0x%"PFMT64x" %s", ds->cmtoken, val, msg);
 			} else {
 				ds_comment_esil (ds, true, false, "%s %s", ds->cmtoken, msg);
 			}
@@ -5550,9 +5550,9 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 		}
 	} else {
 		if (R_STR_ISEMPTY (msg)) {
-			ds_comment_esil (ds, true, false, "%s %s=0x%"PFMT64x, ds->cmtoken, name, *val);
+			ds_comment_esil (ds, true, false, "%s %s=0x%"PFMT64x, ds->cmtoken, name, val);
 		} else {
-			ds_comment_esil (ds, true, false, "%s %s=0x%"PFMT64x" %s", ds->cmtoken, name, *val, msg);
+			ds_comment_esil (ds, true, false, "%s %s=0x%"PFMT64x" %s", ds->cmtoken, name, val, msg);
 		}
 		if (ds->show_comments && !ds->show_cmt_right) {
 			ds_newline (ds);
@@ -5562,7 +5562,6 @@ static bool myregwrite(void *user, const char *name, ut64 old, ut64 val) {
 	return false;
 }
 
-}
 #else
 static bool myregwrite(REsil *esil, const char *name, ut64 *val) {
 	char str[64], *msg = NULL;
